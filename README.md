@@ -1,36 +1,11 @@
 # core.async-workshop
 
-FIXME: description
-
 ## Installation
 
-Download from http://example.com/FIXME.
+* Make sure you have leiningen 2 installed (preferably 2.5.0)
+* `git clone git@github.com:maciejjaskowski/core.async-workshop.git`
+* `cd core.async-workshop`
+* `lein repl`
+* To verify that everything is ok, copy `async_workshop.clj` into the REPL and check that no errors occurred.
 
-## Usage
-
-FIXME: explanation
-
-    $ java -jar core.async-workshop-0.1.0-standalone.jar [args]
-
-## Options
-
-FIXME: listing of options this app accepts.
-
-## Examples
-
-...
-
-### Bugs
-
-...
-
-### Any Other Sections
-### That You Think
-### Might be Useful
-
-## License
-
-Copyright © 2014 FIXME
-
-Distributed under the Eclipse Public License either version 1.0 or (at
-your option) any later version.
+Note! Do `git pull origin master` before the workshop!
