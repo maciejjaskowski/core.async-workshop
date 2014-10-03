@@ -22,11 +22,24 @@
 (is (= read 5))
 
 ; ** Exercise 1a:
-;   try in REPL: (<!! ch) what happens?
+;   try in REPL: (<!! (chan 1)) what happens?
 ; ** Exercise 1b:
-;   you can create an unbuferred channel by invoking (chan)
-;   what is going to happen if you send there a lot of values?
+;   you can create a channel without buffer by invoking (chan)
+;   try in REPL: (>!! (chan) 4) what happens?
 
+
+; == Closing channels
+; Closing a channel after you are finished with one is not strictly necessary
+; but sometimes very handy (you'll see examples below)
+; Note that after closing a channel it constantly returns a nil
+; What happens if you try to put a value into a closed channel?
+
+(def ch2 (chan 2))
+(>!! ch2 1)
+(close! ch2)
+(is (= (<!! ch2) 1))
+(is (= (<!! ch2) nil))
+(is (= (<!! ch2) nil))
 
 
 ; == Transformations of channels
@@ -64,7 +77,7 @@
 (>!! ch-int 1)
 (>!! ch-int 1)
 (>!! ch-int 1)
-(close! ch-int)                                             ; Note that we close! the ch-inc before reading from ch-sum !
+(close! ch-int) ; Note that we close! the ch-inc before reading from ch-sum !
 (is (= (<!! ch-sum) 3))
 
 
@@ -88,32 +101,55 @@
               (>!! c1 "hi")
               (>!! c2 "there"))))
 
-; ** Exercise 3:
+; ** Exercise 3a:
 ; Using alts!! change the implementation below so that the thread
-; stops if a something gets pushed into poison-pills channel
-(let [c1 (chan)
-      poison-pills (chan)]
-  (a/thread (while true
-              (let [v (>!! c1 1)]
-                (<! (timeout 100))
-                (println "Read" v))))
-  (>!! c1 "hi"))
+; stops if a something gets pushed into poison-pill channel
 
+(let [c1 (chan)
+      poison-pill (chan)]
+  (a/thread (loop []
+              (let [v (<!! c1)]
+                (println "Read: " v)
+                (recur))))
+  (>!! c1 "hi")
+  (>!! poison-pill :anything))
+
+; ** Exercise 3b:
+; In order to perform the same trick below we would need to
+; put two :anything into poison-pill channel.
+; There is a way, however to avoid that issue if you remember that
+; after close! a channel always immediately returns nil.
+
+(let [c1 (chan)
+      poison-pill (chan)]
+  (a/thread (loop []
+              (let [v (<!! c1)]
+                (println "Hi: " v)
+                (recur))))
+  (a/thread (loop []
+              (let [v (<!! c1)]
+                (println "Bye: " v)
+                (recur))))
+  (>!! c1 "Shrek")
+  (>!! c1 "Fiona")
+  (>!! c1 "Obi Wan")
+  (>!! c1 "Yoda")
+  (>!! poison-pill :anything))
 
 
 ; == Go Blocks
 ; The real power comes with Go blocks
 
 (def c1 (chan))
-(go (while true
+(go (loop []
       (let [v (<! c1)]
-        (println "Read" v))))
+        (println "Read" v)
+        (recur))))
 (go
   (>! c1 "hi"))
 
-; Compare this to the version from
-; "Channels as means of inter thread communication" section
-; The only diff is we substituted "thread"s by "go"s!
+; Compare this to the version from above
+; The only diff is we substituted "thread"s by "go"s and ">!!" by ">!" or "<!!" by "<!"
 ;
 ; Yet now the <! and >! operations do not block the thread executing a go block.
 ; Instead the execution is suspended and the thread moved to other tasks.
