@@ -67,36 +67,50 @@
        {:content "I am 3" :links []}))
 
 
-(defn crawler [start async-graph]
-  (let [requests-ch (chan 5)
-        req-resp-ch (chan 10)
-        answer-ch (a/reduce merge {} req-resp-ch)
-        n-links-ch (chan 1)]
-    (>!! requests-ch start)
-    (>!! n-links-ch 1)
+(defn crawler
 
-    (a/go-loop
-      []
-      (if-let [req (<! requests-ch)]
-        (do
-          (let [resp (<! (<<< async-graph req))
-                n-new-links (count (:links resp))]
-            (>! req-resp-ch {req resp})
-            (>! n-links-ch (dec n-new-links))
-            (onto-chan requests-ch (:links resp) false)
-            (recur)))
-        (close! req-resp-ch)))
+  ([start async-graph]
+   (crawler start async-graph nil))
 
-    (a/go-loop
-      [sum 0]
-      (let [n (<! n-links-ch)
-            new-sum (+ sum n)]
-        (if (= 0 new-sum)
-          (do
-            (close! requests-ch)
-            (close! n-links-ch))
-          (recur new-sum))))
-    answer-ch))
+  ([start async-graph timeout]
+   (let [requests-ch (chan 5)
+         req-resp-ch (chan 10)
+         answer-ch (a/reduce merge {} req-resp-ch)
+         n-links-ch (chan 1)]
+     (>!! requests-ch start)
+     (>!! n-links-ch 1)
+
+     (a/go-loop
+       []
+       (if-let [req (<! requests-ch)]
+         (do
+           (let [resp (<! (<<< async-graph req))
+                 n-new-links (count (:links resp))]
+             (>! req-resp-ch {req resp})
+             (>! n-links-ch (dec n-new-links))
+             (onto-chan requests-ch (:links resp) false)
+             (recur)))
+         (close! req-resp-ch)))
+
+     (when-not (nil? timeout)
+       (a/go
+         []
+         (<! (a/timeout timeout))
+         (close! req-resp-ch)
+         (close! requests-ch)
+         (close! n-links-ch)))
+
+     (a/go-loop
+       [sum 0]
+       (if-let [n (<! n-links-ch)]
+         (let [new-sum (+ sum n)]
+           (if (= 0 new-sum)
+             (do
+               (close! requests-ch)
+               (close! n-links-ch))
+             (recur new-sum)))))
+
+     answer-ch)))
 
 (def async-graph (remote-api 10))
-(<!! (crawler 1 async-graph))
+;(<!! (crawler 1 async-graph))
