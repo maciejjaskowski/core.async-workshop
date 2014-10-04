@@ -66,5 +66,37 @@
 (is (= (<!! (<<< (remote-api 5) 3))
        {:content "I am 3" :links []}))
 
-(def requestsCh (chan 1))
-(def answersCh (chan))
+
+(defn crawler [start async-graph]
+  (let [requests-ch (chan 5)
+        req-resp-ch (chan 10)
+        answer-ch (a/reduce merge {} req-resp-ch)
+        n-links-ch (chan 1)]
+    (>!! requests-ch start)
+    (>!! n-links-ch 1)
+
+    (a/go-loop
+      []
+      (if-let [req (<! requests-ch)]
+        (do
+          (let [resp (<! (<<< async-graph req))
+                n-new-links (count (:links resp))]
+            (>! req-resp-ch {req resp})
+            (>! n-links-ch (dec n-new-links))
+            (onto-chan requests-ch (:links resp) false)
+            (recur)))
+        (close! req-resp-ch)))
+
+    (a/go-loop
+      [sum 0]
+      (let [n (<! n-links-ch)
+            new-sum (+ sum n)]
+        (if (= 0 new-sum)
+          (do
+            (close! requests-ch)
+            (close! n-links-ch))
+          (recur new-sum))))
+    answer-ch))
+
+(def async-graph (remote-api 10))
+(<!! (crawler 1 async-graph))
