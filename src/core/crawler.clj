@@ -73,33 +73,58 @@
    (crawler start async-graph nil))
 
   ([start async-graph timeout]
-   (let [requests-ch (chan 5)
+   (let [requests-ch (chan 10)
+         prioritized-requests-ch (chan)
          req-resp-ch (chan 10)
-         answer-ch (a/reduce merge {} req-resp-ch)
+         answer-ch (a/reduce conj [] req-resp-ch)
          n-links-ch (chan 1)]
      (>!! requests-ch start)
      (>!! n-links-ch 1)
 
+     ; This go block takes care of executing async requests
+     ; parsing it and sending responses to req-resp-ch
      (a/go-loop
        []
-       (if-let [req (<! requests-ch)]
+       (if-let [req (<! prioritized-requests-ch)]
          (do
            (let [resp (<! (<<< async-graph req))
                  n-new-links (count (:links resp))]
-             (>! req-resp-ch {req resp})
+             (>! req-resp-ch [req resp])
              (>! n-links-ch (dec n-new-links))
              (onto-chan requests-ch (:links resp) false)
              (recur)))
          (close! req-resp-ch)))
 
+     ; This go block takes care of shutting down everything
+     ; if timeout is reached
      (when-not (nil? timeout)
        (a/go
          []
          (<! (a/timeout timeout))
          (close! req-resp-ch)
          (close! requests-ch)
+         (close! prioritized-requests-ch)
          (close! n-links-ch)))
 
+
+     ; This loop takes care of prioritizing requests
+     ; Note the ">" comparator.
+     (a/go-loop
+       [requests []]
+       (if (empty? requests)
+         (if-let [v (<! requests-ch)]
+           (recur (conj requests v)))
+         (let [sorted-requests (sort > requests)
+               first-request (first sorted-requests)
+               rest-requests (rest sorted-requests)
+               [v ch] (a/alts! [requests-ch [prioritized-requests-ch first-request]])]
+           (if (= ch requests-ch)
+             (when-not (nil? v)
+               (recur (conj requests v)))
+             (recur rest-requests)))))
+
+     ; This loop takes care of shutting down everything if
+     ; there is no more requests to be processed
      (a/go-loop
        [sum 0]
        (if-let [n (<! n-links-ch)]
@@ -107,6 +132,7 @@
            (if (= 0 new-sum)
              (do
                (close! requests-ch)
+               (close! prioritized-requests-ch)
                (close! n-links-ch))
              (recur new-sum)))))
 
