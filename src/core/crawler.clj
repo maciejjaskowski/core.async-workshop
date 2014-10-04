@@ -51,11 +51,19 @@
           (callback {:content (str "I am " link)
                      :links   [(* 2 link) (+ 1 (* 2 link))]}))))))
 
-#_(is (= ((remote-api 5) 1)
+(defn <<< [f & args]
+  (let [c (chan)]
+    (apply f (concat args [(fn [x]
+                             (if (nil? x)
+                               (close! c)
+                               (a/put! c x)))]))
+    c))
+
+(is (= (<!! (<<< (remote-api 5) 1))
        {:content "I am 1" :links [2 3]}))
-#_(is (= ((remote-api 5) 2)
+(is (= (<!! (<<< (remote-api 5) 2))
        {:content "I am 2" :links [4 5]}))
-#_(is (= ((remote-api 5) 3)
+(is (= (<!! (<<< (remote-api 5) 3))
        {:content "I am 3" :links []}))
 
 (def requestsCh (chan 1))
